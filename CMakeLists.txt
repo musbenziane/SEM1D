@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.19)
+cmake_minimum_required(VERSION 3.21.1)
 project(SEM1D Fortran)
 
 
@@ -13,4 +13,4 @@ endif()
 enable_language(Fortran)
 add_executable(SEM1D main.f90 gll.f90 lagrangep.f90 legendrep.f90 lagrangeprime.f90 connectivity_matrix.f90 readmodelfiles1D.f90 shapefunc.f90 mapmodel.f90 ricker.f90)
 #add_executable(SEM1D test.f90)
-
+zAv8yC5tiY66B6
