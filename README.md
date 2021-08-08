@@ -1,4 +1,4 @@
-# SEM1D
+# SEM1D 
 Basic 1D Spectral Elements Method Implementation Solver for the wave equation.
 <br>Parameters input file should be as follow:<br>
 
@@ -11,7 +11,14 @@ Basic 1D Spectral Elements Method Implementation Solver for the wave equation.
 1500                 ! Source location<br>
 50                   ! Snapshot interval<br>
 
-<br>
+<h3> Build with gfortran </h3>
+git clone or just download it<br> 
+mkdir src <br>
+unzip inside src/<br>
+mkdir build && cd build/<br>
+cmake ../src<br>
+Make <br>
+
 Compile "create1Dmodel_files.f90" seperately to generate velocity and density 1D models (single precision floats)
 <br> 
 OpenMP lines in the CMAKE file don't matter, they're there as I'm learning OpenMP.
