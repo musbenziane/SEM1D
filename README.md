@@ -1,6 +1,6 @@
 # SEM1D
-Basic 1D Spectral Elements Method Implementation Solver for the wave equation
-parameters input file should be as follow:<br>
+Basic 1D Spectral Elements Method Implementation Solver for the wave equation.
+<br>Parameters input file should be as follow:<br>
 
 4                    ! Polynomial order <br>
 1000                 ! Number of elements<br>
