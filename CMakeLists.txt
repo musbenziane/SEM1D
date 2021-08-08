@@ -11,7 +11,6 @@ if(CMAKE_Fortran_COMPILER_ID MATCHES GNU)
 endif()
 
 enable_language(Fortran)
-add_executable(SEM1D main.f90 gll.f90 lagrangep.f90 legendrep.f90 lagrangeprime.f90 connectivity_matrix.f90 readmodelfiles1D.f90 shapefunc.f90 mapmodel.f90 ricker.f90
-    compute_forcemat.f90 read_sim_parameters.f90)
+add_executable(SEM1D main.f90 gll.f90 lagrangep.f90 legendrep.f90 lagrangeprime.f90 connectivity_matrix.f90 readmodelfiles1D.f90 shapefunc.f90 mapmodel.f90 ricker.f90)
 #add_executable(SEM1D test.f90)
 
