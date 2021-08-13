@@ -7,7 +7,7 @@ program SEM1D
     implicit none
     real (kind=4)                                              :: Jc, Jci, h, f0, dt, sum, CFL, mindist, lambdamin
     real (kind=4), dimension(:), allocatable                   :: xi, wi, v1D, rho1D, Me, M, xgll, rho1Dgll, v1Dgll, fe
-    real (kind=4), dimension(:), allocatable                   :: mu1Dgll, u, uold, unew, F, src
+    real (kind=4), dimension(:), allocatable                   :: mu1Dgll, u, uold, unew, F, src, temp1, temp2, temp3
     real (kind=4), dimension(:,:), allocatable                 :: lprime, Minv, Kg, Ke,Uout
     integer, dimension(:,:), allocatable                       :: Cij,kij
     integer                                                    :: N, ne, ngll, i, j, k, nt, isrc, t, el, isnap
@@ -86,6 +86,8 @@ program SEM1D
     allocate(src(nt))                   ! Source time function
     allocate(F(ngll))                   ! External force
     allocate(Uout(nt,ngll))             ! Snapshots
+    allocate(temp1(ngll),temp2(ngll) &
+            ,temp3(ngll))               ! Temps
 
 
 
@@ -208,7 +210,14 @@ program SEM1D
         ! Injecting source
         F(isrc) = src(t)
 
-        unew = (dt**2.) * matmul(Minv,(F - matmul(Kg,u)))  + 2. * u - uold
+
+
+        !$OMP PARALLEL WORKSHARE
+        temp1 = matmul(Kg,u)
+        temp2 = F - temp1
+        temp3 = matmul(Minv,temp2)
+        unew = (dt**2.) * temp3  + 2. * u - uold
+        !$OMP END PARALLEL WORKSHARE
         uold = u
         u = unew
 
@@ -219,6 +228,7 @@ program SEM1D
                 print*,"At time sample ->",t, "/",nt
             end if
         end if
+
     end do
 
 
