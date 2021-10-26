@@ -8,10 +8,10 @@
 subroutine lagrangep(N,i,x,fac,l)
     implicit none
     integer, intent(in) :: N, i,l
-    real (kind=4), dimension(l),intent(in) :: x
-    real (kind=4), dimension(l),intent(out) :: fac
+    real (kind=8), dimension(l),intent(in) :: x
+    real (kind=8), dimension(l),intent(out) :: fac
     integer :: j
-    real (kind=4) ,  dimension(N+1) :: xi,wi
+    real (kind=8) ,  dimension(N+1) :: xi,wi
 
     call gll(N,xi,wi)
     fac = 1

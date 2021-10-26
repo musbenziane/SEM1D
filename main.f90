@@ -5,15 +5,15 @@ program SEM1D
     USE OMP_LIB
 
     implicit none
-    real (kind=4)                                              :: Jc, Jci, h, f0, dt, sum, CFL, mindist, lambdamin
-    real (kind=4), dimension(:), allocatable                   :: xi, wi, v1D, rho1D, Me, M, xgll, rho1Dgll, v1Dgll, fe
-    real (kind=4), dimension(:), allocatable                   :: mu1Dgll, u, uold, unew, F, src, temp1, temp2, temp3
-    real (kind=4), dimension(:,:), allocatable                 :: lprime, Minv, Kg, Ke,Uout
+    real (kind=8)                                              :: Jc, Jci, h, f0, dt, sum, CFL, mindist, lambdamin
+    real (kind=8), dimension(:), allocatable                   :: xi, wi, v1D, rho1D, Me, M, xgll, rho1Dgll, v1Dgll, fe
+    real (kind=8), dimension(:), allocatable                   :: mu1Dgll, u, uold, unew, F, src, temp1, temp2, temp3
+    real (kind=8), dimension(:,:), allocatable                 :: lprime, Minv, Kg, Ke,Uout
     integer, dimension(:,:), allocatable                       :: Cij,kij
     integer                                                    :: N, ne, ngll, i, j, k, nt, isrc, t, el, isnap
     character(len=40)                                          :: filename, filecheck, outname
 
-    outname = "snapshots.bin"
+    outname = "OUTPUT/snapshots.bin"
 
     write(*,*) "##########################################"
     write(*,*) "######## Reading parameters file #########"
@@ -86,9 +86,6 @@ program SEM1D
     allocate(src(nt))                   ! Source time function
     allocate(F(ngll))                   ! External force
     allocate(Uout(nt,ngll))             ! Snapshots
-    allocate(temp1(ngll),temp2(ngll) &
-            ,temp3(ngll))               ! Temps
-
 
 
     call gll(N,xi,wi)                              ! Getting GLL points and weights
@@ -124,7 +121,7 @@ program SEM1D
     write(*,*)"##########################################"
 
     lambdamin = minval(v1D)/(f0*2.5)
-
+    print*,rho1D(10)
     print"(a32,f3.1)", " Elements per minimum wavelength ->", lambdamin/h
     if ((lambdamin/h)<1) then
         print*,"Element size is too large"
@@ -213,10 +210,7 @@ program SEM1D
 
 
         !$OMP PARALLEL WORKSHARE
-        temp1 = matmul(Kg,u)
-        temp2 = F - temp1
-        temp3 = matmul(Minv,temp2)
-        unew = (dt**2.) * temp3  + 2. * u - uold
+        unew = (dt**2.) * MATMUL(Minv,F - MATMUL(Kg,u))  + 2. * u - uold
         !$OMP END PARALLEL WORKSHARE
         uold = u
         u = unew
@@ -232,7 +226,7 @@ program SEM1D
     end do
 
 
-    open(15,file=outname,access="direct",recl=nt*ngll*4)
+    open(15,file=outname,access="direct",recl=nt*ngll*8)
     write(15,rec=1) Uout
     close(15)
 

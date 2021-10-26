@@ -8,12 +8,12 @@
 subroutine lagrangeprime(N,primed)
     implicit none
     integer, intent(in)                            :: N
-    real (kind=4), dimension(N+1,N+1), intent(out) :: primed
-    real (kind=4), dimension(N+1,N+1)              :: dij
-    real (kind=4), dimension(N+1)                  :: xi, wi
-    real (kind=4)                                  :: Lxi, Lxj, sum, lk
+    real (kind=8), dimension(N+1,N+1), intent(out) :: primed
+    real (kind=8), dimension(N+1,N+1)              :: dij
+    real (kind=8), dimension(N+1)                  :: xi, wi
+    real (kind=8)                                  :: Lxi, Lxj, sum, lk
     integer                                        :: i,j,k
-    real (kind=4), external                        :: legendrep
+    real (kind=8), external                        :: legendrep
 
 
     call gll(N,xi,wi)

@@ -3,8 +3,8 @@
 program create1Dmodel_files
     implicit none
     integer :: modtype, ns, nend, nel
-    real (kind=4) :: vs, rho,rat
-    real (kind=4), dimension(:), allocatable :: v1D, rho1D
+    real (kind=8) :: vs, rho,rat
+    real (kind=8), dimension(:), allocatable :: v1D, rho1D
 
     write(*,*) "Simple model -> 0 : vs = 2000 m/s, rho = 1800 kg/m³"
     write(*,*) "Homogeneous -> 1 | Heterogenous  [1 diffrent layer ] -> 2"
@@ -21,11 +21,11 @@ program create1Dmodel_files
         case (0)
         v1D = 2000
         rho1D = 1800
-        open(9,file="V1D.bin",access='direct',recl=nel*4)
+        open(9,file="V1D.bin",access='direct',recl=nel*8)
         write(9,rec=1) v1D
         close(9)
 
-        open(8,file="RHO1D.bin",access='direct',recl=nel*4)
+        open(8,file="RHO1D.bin",access='direct',recl=nel*8)
         write(8,rec=1) rho1D
         close(8)
 
@@ -38,13 +38,14 @@ program create1Dmodel_files
         v1D = vs
         rho1D = rho
 
-        open(10,file="V1D.bin",access='direct',recl=nel*4)
+        open(10,file="V1D.bin",access='direct',recl=nel*8)
         write(10,rec=1) v1D
         close(10)
 
-        open(11,file="RHO1D.bin",access='direct',recl=nel*4)
+        open(11,file="RHO1D.bin",access='direct',recl=nel*8)
         write(11,rec=1) rho1D
         close(11)
+
         deallocate(v1D)
         deallocate(rho1D)
 
@@ -60,11 +61,11 @@ program create1Dmodel_files
         v1D(ns:nend) = vs * rat
         rho1D = rho
 
-        open(12,file="V1D.bin",access='direct',recl=nel*4)
+        open(12,file="V1D.bin",access='direct',recl=nel*8)
         write(12,rec=1) v1D
         close(12)
 
-        open(13,file="RHO1D.bin",access='direct',recl=nel*4)
+        open(13,file="RHO1D.bin",access='direct',recl=nel*8)
         write(13,rec=1) rho1D
         close(13)
 

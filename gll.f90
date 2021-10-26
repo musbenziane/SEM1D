@@ -6,7 +6,7 @@
 ! Results obtained from:  Heiner Igel's course material on github, originally obtained from: Abramowitz and Stegun 1984
 subroutine gll(N,xi,wi)
     integer, intent(in) :: N
-    real (kind=4),  dimension(N+1), intent(out):: xi,wi
+    real (kind=8),  dimension(N+1), intent(out):: xi,wi
 
     select case (N)
         case (2)

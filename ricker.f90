@@ -2,10 +2,10 @@
 subroutine ricker(nt,f0,dt,source)
     implicit none
     integer                      :: nt
-    real (kind=4)                :: f0
-    real (kind=4),dimension(nt  )::source
+    real (kind=8)                :: f0
+    real (kind=8),dimension(nt  )::source
 
-    real (kind=4)     	         :: dt,t0,t,a,pt
+    real (kind=8)     	         :: dt,t0,t,a,pt
     integer 	:: i
     pt = 1/f0
     !n = int(2 * pt / dt)

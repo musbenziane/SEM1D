@@ -2,11 +2,11 @@
 
 subroutine shapefunc(N,h,ne,xg)
     implicit none
-    real (kind=4), intent(in) :: h
+    real (kind=8), intent(in) :: h
     integer, intent(in) :: N, ne
-    real (kind=4), intent(out) :: xg(N*ne+1)
+    real (kind=8), intent(out) :: xg(N*ne+1)
     integer :: i, j, c
-    real (kind=4) :: xi(N+1), wi(N+1)
+    real (kind=8) :: xi(N+1), wi(N+1)
 
     call gll(N,xi,wi)
 

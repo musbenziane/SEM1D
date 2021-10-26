@@ -3,10 +3,10 @@
 
 function legendrep(N,x) result(fac)
     !implicit none
-    real (kind=4) :: fac
-    real (kind=4), intent(in) :: x
+    real (kind=8) :: fac
+    real (kind=8), intent(in) :: x
     integer, intent(in) :: N
-    real (kind=4), dimension(N+1) :: poly
+    real (kind=8), dimension(N+1) :: poly
     integer :: i
 
     select case (N)
