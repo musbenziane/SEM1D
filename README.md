@@ -19,7 +19,7 @@ mkdir build && cd build/<br>
 cmake ../src<br>
 Make <br>
 
-Compile "create1Dmodel_files.f90" seperately to generate velocity and density 1D models (single precision floats)
+Compile "create1Dmodel_files.f90" seperately to generate velocity and density 1D models (double precision floats)
 <br> 
 OpenMP lines in the CMAKE file don't matter, they're there as I'm learning OpenMP.
 <br>
