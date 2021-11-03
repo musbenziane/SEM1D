@@ -88,7 +88,7 @@ program SEM1D
     allocate(Uout(nt,ngll))             ! Snapshots
 
 
-    call gll(N,xi,wi)                              ! Getting GLL points and weights
+    call zwgljd(xi,wi,N+1,0.,0.)                              ! Getting GLL points and weights
     call readmodelfiles1D(v1D, rho1D, ne)          ! Reading model files
     call connectivity_matrix(N,ne,Cij)             ! Getting connectivity matrix
     call shapefunc(N,h,ne, xgll)                   ! Global domain mapping
