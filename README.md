@@ -24,3 +24,6 @@ Compile "create1Dmodel_files.f90" seperately to generate velocity and density 1D
 OpenMP lines in the CMAKE file are for learning OMP purposes, omitting my prodcuce errors.
 <br>
 Check Cmake version before compiling 
+
+<br>
+GLL points and quadrature weights are calculated with gll_library.f90, which contains Gauss-Lobatto routines from M.I.T Departement of Mechanical Engineering.
