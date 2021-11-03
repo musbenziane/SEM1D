@@ -2,15 +2,23 @@
 ! Spectral Elements 1D Solver with a regular mesh
 
 program SEM1D
-    USE OMP_LIB
+    !$ USE OMP_LIB
 
     implicit none
+
+    interface connectivity_matrix
+        function connectivity_matrix(N,ne)
+            integer, intent(in)                                :: N, ne
+            integer connectivity_matrix(N+1,ne)
+        end function
+    end interface
+
     real (kind=8)                                              :: Jc, Jci, h, f0, dt, sum, CFL, mindist, lambdamin
     real (kind=8), dimension(:), allocatable                   :: xi, wi, v1D, rho1D, Me, M, xgll, rho1Dgll, v1Dgll, fe
     real (kind=8), dimension(:), allocatable                   :: mu1Dgll, u, uold, unew, F, src, temp1, temp2, temp3
     real (kind=8), dimension(:,:), allocatable                 :: lprime, Minv, Kg, Ke,Uout
-    integer, dimension(:,:), allocatable                       :: Cij,kij
-    integer                                                    :: N, ne, ngll, i, j, k, nt, isrc, t, el, isnap
+    integer, dimension(:,:), allocatable                       :: Cij, kij
+    integer                                                    :: N, ne, ngll, i, j, k, nt, isrc, t, el, isnap, reclsnaps
     character(len=40)                                          :: filename, filecheck, outname
 
     outname = "OUTPUT/snapshots.bin"
@@ -64,7 +72,6 @@ program SEM1D
     Jc = h / 2                         ! Jacobian for structured 1D mesh
     Jci = 1 / Jc                       ! Jacobian inverse
 
-
     allocate(xi(N+1))                   ! GLL points
     allocate(wi(N+1))                   ! GLL Quadrature weights
     allocate(v1D(ne))                   ! 1D velocity model in elements
@@ -85,17 +92,16 @@ program SEM1D
     allocate(unew(ngll))                ! displacement vecotr at time t - dt
     allocate(src(nt))                   ! Source time function
     allocate(F(ngll))                   ! External force
-    allocate(Uout(nt,ngll))             ! Snapshots
+    allocate(Uout(NINT(REAL(nt/isnap)),ngll))             ! Snapshots
 
 
-    call zwgljd(xi,wi,N+1,0.,0.)                              ! Getting GLL points and weights
-    call readmodelfiles1D(v1D, rho1D, ne)          ! Reading model files
-    call connectivity_matrix(N,ne,Cij)             ! Getting connectivity matrix
-    call shapefunc(N,h,ne, xgll)                   ! Global domain mapping
-    call mapmodel(N,ne, rho1D,v1D,rho1Dgll,v1Dgll) ! Mapping models
+
     call lagrangeprime(N,lprime)                   ! Lagrange polynomials derivatives
+    call zwgljd(xi,wi,N+1,0.,0.)                   ! Getting GLL points and weights
+    call readmodelfiles1D(v1D, rho1D, ne)          ! Reading model files
+    call shapefunc(N,h,ne, xgll)                   ! Global domain mapping
+    call mapmodel(N,ne,rho1D,v1D,rho1Dgll,v1Dgll)  ! Mapping models
     call ricker(nt,f0,dt,src)                      ! Source time function
-
 
 
     write(*,*)"##########################################"
@@ -104,6 +110,7 @@ program SEM1D
 
     mindist = xgll(2) - xgll(1)
     CFL = (dt/mindist) * maxval(v1D(:))
+
     if (CFL > .8) then
         print"(a14,f6.3)","CFL value is ",CFL
         print*,"Decrease time step, the program has been terminated"
@@ -119,10 +126,10 @@ program SEM1D
     write(*,*)"##########################################"
     write(*,*)"########## Space Sampling check ##########"
     write(*,*)"##########################################"
-
     lambdamin = minval(v1D)/(f0*2.5)
-    print*,rho1D(10)
-    print"(a32,f3.1)", " Elements per minimum wavelength ->", lambdamin/h
+
+!    print"(a32,f3.1)", " Elements per minimum wavelength ->", lambdamin/h
+
     if ((lambdamin/h)<1) then
         print*,"Element size is too large"
         print*,"Numerical dispersion might be present"
@@ -154,6 +161,7 @@ program SEM1D
     !##########################################
     !####### Construct the mass matrix ########
     !##########################################
+    Cij  = connectivity_matrix(N,ne)
 
     do i=1,ne
         do j=1,N+1
@@ -202,12 +210,10 @@ program SEM1D
     u(:)    = 0.
     unew(:) = 0.
     F(:)    = 0.
-
+    k = 0;
     do t=1,nt
         ! Injecting source
         F(isrc) = src(t)
-
-
 
         !$OMP PARALLEL WORKSHARE
         unew = (dt**2.) * MATMUL(Minv,F - MATMUL(Kg,u))  + 2. * u - uold
@@ -217,7 +223,8 @@ program SEM1D
 
 
         if ( mod(t,isnap) == 0) then
-            Uout(t,:) = u
+            k = k + 1
+            Uout(k,:) = u
             if (mod(t,50) == 0) then
                 print*,"At time sample ->",t, "/",nt
             end if
@@ -225,12 +232,12 @@ program SEM1D
 
     end do
 
-
-    open(15,file=outname,access="direct",recl=nt*ngll*8)
+    inquire(iolength=reclsnaps) Uout
+    open(15,file=outname,access="direct",recl=reclsnaps)
     write(15,rec=1) Uout
     close(15)
 
-    deallocate(xi,wi,v1D,v1Dgll,rho1D,rho1Dgll,mu1Dgll,xgll,Cij,M,Me,Minv)
+    !deallocate(xi,wi,v1D,v1Dgll,rho1D,rho1Dgll,mu1Dgll,xgll,Cij,M,Me,Minv)
     deallocate(u,uold,unew,lprime,Kg,Ke)
     deallocate(Uout)
 end program

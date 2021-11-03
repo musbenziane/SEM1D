@@ -16,7 +16,7 @@ subroutine lagrangeprime(N,primed)
     real (kind=8), external                        :: legendrep
 
 
-    call gll(N,xi,wi)
+    call zwgljd(xi,wi,N+1,0.,0.)
 
 
     do i=0,N
