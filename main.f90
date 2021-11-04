@@ -25,11 +25,14 @@ program SEM1D
     character(len=40)                                          :: filename, filecheck, outname
     !$ integer                                                 :: n_workers
 
-
+    write(*,*) "##########################################"
+    write(*,*) "############### OpenMP     ###############"
     !$OMP PARALLEL
     !$ n_workers = OMP_GET_NUM_THREADS()
     !$OMP END PARALLEL
-    !$ print '(//,3X,"Number of workers ->  ",i2)',n_workers
+    !$ print '(3X,"Number of workers ->  ",i2)',n_workers
+
+
 
     call cpu_time(t_cpu_0)
     call system_clock(count=t0, count_rate=ir)
@@ -295,4 +298,3 @@ program SEM1D
     deallocate(u,uold,unew,lprime,Kg,Ke)
     deallocate(Uout)
 end program
-
