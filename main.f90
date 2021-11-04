@@ -1,7 +1,6 @@
 ! Created by mus on 28/07/2021.
 ! Spectral Elements 1D Solver with a regular mesh
 
-
 program SEM1D
     !$ USE OMP_LIB
 
@@ -14,6 +13,7 @@ program SEM1D
         end function
     end interface
 
+
     real (kind=8)                                              :: Jc, Jci, h, f0, dt, sum, CFL, mindist, lambdamin
     real(kind=8)                                               :: time, t_cpu_0, t_cpu_1, t_cpu, tmp
     real (kind=8), dimension(:), allocatable                   :: xi, wi, v1D, rho1D, Me, M, xgll, rho1Dgll, v1Dgll
@@ -24,6 +24,7 @@ program SEM1D
     integer                                                    :: ir, t0, t1
     character(len=40)                                          :: filename, filecheck, outname
     !$ integer                                                 :: n_workers
+
 
     !$OMP PARALLEL
     !$ n_workers = OMP_GET_NUM_THREADS()
@@ -108,7 +109,6 @@ program SEM1D
     allocate(Uout(NINT(REAL(nt/isnap)),ngll))             ! Snapshots
 
 
-
     call lagrangeprime(N,lprime)                   ! Lagrange polynomials derivatives
     call zwgljd(xi,wi,N+1,0.,0.)                   ! Getting GLL points and weights
     call readmodelfiles1D(v1D, rho1D, ne)          ! Reading model files
@@ -135,13 +135,12 @@ program SEM1D
     end if
 
 
-
     write(*,*)"##########################################"
     write(*,*)"########## Space Sampling check ##########"
     write(*,*)"##########################################"
     lambdamin = minval(v1D)/(f0*2.5)
 
-!    print"(a32,f3.1)", " Elements per minimum wavelength ->", lambdamin/h
+    print"(a32,f3.1)", " Elements per minimum wavelength ->", lambdamin/h
 
     if ((lambdamin/h)<1) then
         print*,"Element size is too large"
@@ -193,9 +192,9 @@ program SEM1D
     !###############################################
     !####### Construct the Stiffness matrix ########
     !###############################################
-
     mu1Dgll(:) = rho1Dgll(:) * v1Dgll(:)**2.          ! Shear modulus
     Kg(:,:) = 0
+    !$omp parallel do private(el,i,j,k,sum) shared(Kg,Ke,Cij,lprime,wi,Jc,Jci,N) schedule(static)
     do el=1,ne
         do i=1,N+1                                    ! Elemental stifness matrix
             do j=1,N+1
@@ -213,7 +212,7 @@ program SEM1D
             end do
         end do
     end do
-
+    !$omp end parallel do
 
     write(*,*) "!##########################################"
     write(*,*) "############ BEGIN TIME LOOP ##############"
