@@ -27,3 +27,5 @@ Check Cmake version before compiling
 
 <br>
 GLL points and quadrature weights are calculated with gll_library.f90, which contains Gauss-Lobatto routines from M.I.T Departement of Mechanical Engineering.
+
+PS: A DEALLOCATE line is commented, as deallocating some matrices is causing memory segmentation fault, I am trying to figure out the issue.
