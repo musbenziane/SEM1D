@@ -1,6 +1,7 @@
 ! Created by mus on 28/07/2021.
 ! Spectral Elements 1D Solver with a regular mesh
 
+
 program SEM1D
     !$ USE OMP_LIB
 
@@ -14,12 +15,23 @@ program SEM1D
     end interface
 
     real (kind=8)                                              :: Jc, Jci, h, f0, dt, sum, CFL, mindist, lambdamin
-    real (kind=8), dimension(:), allocatable                   :: xi, wi, v1D, rho1D, Me, M, xgll, rho1Dgll, v1Dgll, fe
+    real(kind=8)                                               :: time, t_cpu_0, t_cpu_1, t_cpu, tmp
+    real (kind=8), dimension(:), allocatable                   :: xi, wi, v1D, rho1D, Me, M, xgll, rho1Dgll, v1Dgll
     real (kind=8), dimension(:), allocatable                   :: mu1Dgll, u, uold, unew, F, src, temp1, temp2, temp3
     real (kind=8), dimension(:,:), allocatable                 :: lprime, Minv, Kg, Ke,Uout
-    integer, dimension(:,:), allocatable                       :: Cij, kij
+    integer, dimension(:,:), allocatable                       :: Cij
     integer                                                    :: N, ne, ngll, i, j, k, nt, isrc, t, el, isnap, reclsnaps
+    integer                                                    :: ir, t0, t1
     character(len=40)                                          :: filename, filecheck, outname
+    !$ integer                                                 :: n_workers
+
+    !$OMP PARALLEL
+    !$ n_workers = OMP_GET_NUM_THREADS()
+    !$OMP END PARALLEL
+    !$ print '(//,3X,"Number of workers ->  ",i2)',n_workers
+
+    call cpu_time(t_cpu_0)
+    call system_clock(count=t0, count_rate=ir)
 
     outname = "OUTPUT/snapshots.bin"
 
@@ -92,6 +104,7 @@ program SEM1D
     allocate(unew(ngll))                ! displacement vecotr at time t - dt
     allocate(src(nt))                   ! Source time function
     allocate(F(ngll))                   ! External force
+    allocate(temp1(ngll),temp2(ngll),temp3(ngll))
     allocate(Uout(NINT(REAL(nt/isnap)),ngll))             ! Snapshots
 
 
@@ -212,30 +225,72 @@ program SEM1D
     F(:)    = 0.
     k = 0;
     do t=1,nt
+
         ! Injecting source
         F(isrc) = src(t)
 
+        !$omp parallel do private(i,k,tmp) shared(Kg,u,temp1,ngll) schedule(static)
+        do i=1,ngll
+            tmp = 0.0
+            do k=1,ngll
+                tmp = tmp + kg(i,k) * u(k)
+            enddo
+            temp1(i) = tmp
+        enddo
+        !$omp end parallel do
+
         !$OMP PARALLEL WORKSHARE
-        unew = (dt**2.) * MATMUL(Minv,F - MATMUL(Kg,u))  + 2. * u - uold
+        temp2 = F(:) - temp1(:)
+        !$OMP END PARALLEL WORKSHARE
+
+        !$omp parallel do private(i) shared(Minv,temp2,temp3,ngll) schedule(static)
+        do i=1,ngll
+            temp3(i) = Minv(i,i) * temp2(i)
+        enddo
+        !$omp end parallel do
+
+
+        !$OMP PARALLEL WORKSHARE
+        unew(:) = (dt**2.) * temp3(:)  + 2. * u(:) - uold(:)
         !$OMP END PARALLEL WORKSHARE
         uold = u
         u = unew
 
-
-        if ( mod(t,isnap) == 0) then
+        if (mod(t,isnap) == 0) then
             k = k + 1
             Uout(k,:) = u
-            if (mod(t,50) == 0) then
+            if (mod(t,NINT(nt/100.))==0) then
                 print*,"At time sample ->",t, "/",nt
             end if
         end if
 
     end do
+    write(*,*) "##########################################"
+    write(*,*) "######### Write solution binary ##########"
+    write(*,*) "######### Solution in OUTPUT/   ##########"
+    write(*,*) "##########################################"
 
     inquire(iolength=reclsnaps) Uout
     open(15,file=outname,access="direct",recl=reclsnaps)
     write(15,rec=1) Uout
     close(15)
+
+    ! Temps elapsed final.
+    call system_clock(count=t1, count_rate=ir)
+    time = real(t1 - t0,kind=8) / real(ir,kind=8)
+
+    call cpu_time(t_cpu_1)
+    t_cpu = t_cpu_1 - t_cpu_0
+
+    write(*,*) "##########################################"
+    write(*,*) "######### TIME:                 ##########"
+    print '(//3X,"Elapsed Time        : ",1PE10.3," [s]",/ &
+            &,3X,"CPU Time            : ",1PE10.3," [s]",//)', &
+            & time,t_cpu
+    write(*,*) "##########################################"
+
+
+
 
     !deallocate(xi,wi,v1D,v1Dgll,rho1D,rho1Dgll,mu1Dgll,xgll,Cij,M,Me,Minv)
     deallocate(u,uold,unew,lprime,Kg,Ke)

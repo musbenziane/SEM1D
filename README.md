@@ -21,7 +21,7 @@ Make <br>
 
 Compile "create1Dmodel_files.f90" seperately to generate velocity and density 1D models (double precision floats)
 <br> 
-OpenMP lines in the CMAKE file are for learning OMP purposes, omitting my prodcuce errors.
+If OpenMP API is not installed, comment the OMP lines in the CMAKE file.
 <br>
 Check Cmake version before compiling 
 
