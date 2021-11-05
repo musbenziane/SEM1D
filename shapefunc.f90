@@ -5,7 +5,7 @@ subroutine shapefunc(N,h,ne,xg)
     real (kind=8), intent(in)    :: h
     integer, intent(in)          :: N, ne
     real (kind=8), intent(out)   :: xg(ne,N+1)
-    integer :: i, j, c
+    integer :: i, j
     real (kind=8) :: xi(N+1), wi(N+1)
 
     call zwgljd(xi,wi,N+1,0.,0.)

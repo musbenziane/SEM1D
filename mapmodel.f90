@@ -14,7 +14,7 @@ subroutine mapmodel(N,ne,rho1D,v1D,rho1Dgll,v1Dgll)
     real (kind=8), intent(in)         :: rho1D(ne), v1D(ne)
     real (kind=8), intent(out)        :: rho1Dgll(N*ne+1), v1Dgll(N*ne+1)
     integer, dimension(N+1,N*ne+1)    :: Cij
-    integer                           :: i, j, c
+    integer                           :: i, j
 
     Cij = connectivity_matrix(N,ne)
 
