@@ -16,7 +16,7 @@ program SEM1D
 
 
     real (kind=8)                                              :: Jc, Jci, h, f0, dt, sum, CFL, mindist, lambdamin
-    real(kind=8)                                               :: time, t_cpu_0, t_cpu_1, t_cpu, tmp
+    real (kind=8)                                              :: time, t_cpu_0, t_cpu_1, t_cpu, tmp
     real (kind=8), dimension(:), allocatable                   :: xi, wi, v1D, rho1D, Me, M, xgll, rho1Dgll, v1Dgll
     real (kind=8), dimension(:), allocatable                   :: mu1Dgll, u, uold, unew, F, src, temp1, temp2, temp3
     real (kind=8), dimension(:,:), allocatable                 :: lprime, Minv, Kg, Ke,Uout
@@ -25,14 +25,20 @@ program SEM1D
     integer                                                    :: ir, t0, t1
     character(len=40)                                          :: filename, filecheck, outname
     !$ integer                                                 :: n_workers
+    logical                                                    :: OMPcheck = .false.
+
 
     write(*,*) "##########################################"
     write(*,*) "############### OpenMP     ###############"
-    !$OMP PARALLEL
-    !$ n_workers = OMP_GET_NUM_THREADS()
-    !$OMP END PARALLEL
-    !$ print '(3X,"Number of workers ->  ",i2)',n_workers
-
+    !$ OMPcheck = .true.
+    if (OMPcheck) then
+        !$OMP PARALLEL
+        !$ n_workers = OMP_GET_NUM_THREADS()
+        !$OMP END PARALLEL
+        !$ print '(3X,"Number of workers ->  ",i2)',n_workers
+    else
+        write(*,*) "Program has been compiled without OpenMP; Time marching will run in serial"
+    end if
 
 
     call cpu_time(t_cpu_0)
@@ -89,15 +95,13 @@ program SEM1D
     Jc = h / 2                         ! Jacobian for structured 1D mesh
     Jci = 1 / Jc                       ! Jacobian inverse
 
+    allocate(Cij(N+1,ne))               ! Connectivity matrix
     allocate(xi(N+1))                   ! GLL points
     allocate(wi(N+1))                   ! GLL Quadrature weights
     allocate(v1D(ne))                   ! 1D velocity model in elements
     allocate(rho1D(ne))                 ! Density velocity model in elements
     allocate(rho1Dgll(ngll))            ! 1D density model mapped
     allocate(v1Dgll(ngll))              ! 1D velocity mapped
-    allocate(mu1Dgll(ngll))             ! Shear modulus mapped
-    allocate(xgll(ngll))                ! Array for global mapping
-    allocate(Cij(N+1,ne))               ! Connectivity matrix
     allocate(M(ngll))                   ! Global mass matrix in vector form
     allocate(Minv(ngll,ngll))           ! Inverse of the mass matrix
     allocate(Me(N+1))                   ! Elemental mass matrix
@@ -111,15 +115,18 @@ program SEM1D
     allocate(F(ngll))                   ! External force
     allocate(temp1(ngll),temp2(ngll),temp3(ngll))
     allocate(Uout(NINT(REAL(nt/isnap)),ngll))             ! Snapshots
+    allocate(mu1Dgll(ngll))             ! Shear modulus mapped
+    allocate(xgll(ngll))                ! Array for global mapping
 
+    Cij  = connectivity_matrix(N,ne)
 
     call lagrangeprime(N,lprime)                   ! Lagrange polynomials derivatives
     call zwgljd(xi,wi,N+1,0.,0.)                   ! Getting GLL points and weights
     call readmodelfiles1D(v1D, rho1D, ne)          ! Reading model files
-    call shapefunc(N,h,ne, xgll)                   ! Global domain mapping
+    call shapefunc(N,h,ne,Cij,xgll)                ! Global domain mapping
     call mapmodel(N,ne,rho1D,v1D,rho1Dgll,v1Dgll)  ! Mapping models
     call ricker(nt,f0,dt,src)                      ! Source time function
-
+    
 
     write(*,*)"##########################################"
     write(*,*)"############### CFL Check ################"
@@ -177,7 +184,6 @@ program SEM1D
     !##########################################
     !####### Construct the mass matrix ########
     !##########################################
-    Cij  = connectivity_matrix(N,ne)
 
     do i=1,ne
         do j=1,N+1
@@ -196,7 +202,7 @@ program SEM1D
     !###############################################
     !####### Construct the Stiffness matrix ########
     !###############################################
-    mu1Dgll(:) = rho1Dgll(:) * v1Dgll(:)**2.          ! Shear modulus
+    mu1Dgll(:) =  rho1Dgll(:) * v1Dgll(:)**2.          ! Shear modulus
     Kg(:,:) = 0
     !$omp parallel do private(el,i,j,k,sum) shared(Kg,Ke,Cij,lprime,wi,Jc,Jci,N) schedule(static)
     do el=1,ne
@@ -262,12 +268,12 @@ program SEM1D
         if (mod(t,isnap) == 0) then
             k = k + 1
             Uout(k,:) = u
-            if (mod(t,NINT(nt/100.))==0) then
+            if (mod(t,NINT(nt/10.))==0) then
                 print*,"At time sample ->",t, "/",nt
             end if
         end if
-
     end do
+    
     write(*,*) "##########################################"
     write(*,*) "######### Write solution binary ##########"
     write(*,*) "######### Solution in OUTPUT/   ##########"
@@ -292,10 +298,10 @@ program SEM1D
             & time,t_cpu
     write(*,*) "##########################################"
 
-
-
-
-    !deallocate(xi,wi,v1D,v1Dgll,rho1D,rho1Dgll,mu1Dgll,xgll,Cij,M,Me,Minv)
+    deallocate(xi,wi,v1D,v1Dgll,rho1D,rho1Dgll)
+    deallocate(M,Me,Minv)
+    deallocate(Cij)
+    deallocate(mu1Dgll,xgll)
     deallocate(u,uold,unew,lprime,Kg,Ke)
     deallocate(Uout)
 end program
