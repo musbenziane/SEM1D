@@ -1,10 +1,46 @@
-
-! Created by mus on 28/07/2021.
-! Spectral Elements 1D Solver with a regular mesh
-
 program SEM1D
-    !$ USE OMP_LIB
 
+    !###################################################################################################################
+    ! Created by mus on 28/07/2021.
+    ! Spectral Elements 1D Solver with a regular mesh for the elastic wave equation 
+    ! NOTE: This program is yet to be tested against analytical solutions.
+    ! 
+    ! Language: Fortran 90, with parralel impelementation using OpenMP API
+    ! 
+    ! Sources:  Igel 2017
+    ! 
+    ! The code used for arbitrary GLL points and weights was created by M.I.T departement of engineering. Link is hereafter
+    ! https://geodynamics.org/cig/doxygen/release/specfem3d/    | file name: gll_library.f90
+    ! 
+    ! This is part of the Numerical Modelling Workshop.
+    ! 
+    ! Supervisor: Pr. Emmanual Chaljub
+    ! Author    : Mus Benziane
+    !
+    ! Input file: [Example]
+    ! testing              ! Model name prefix (model names: prefix_vp, prefix_rho)
+    ! 3                    ! Polynomial order
+    ! 1000                 ! Number of elements
+    ! 20                   ! Element size
+    ! 5.                   ! Wavelet's peak frequency
+    ! 0.001                ! Time step
+    ! 10000                ! Number of time steps
+    ! 1                    ! Source location (element number)
+    ! 1                    ! Source location (gll point)
+    ! 1                    ! [1/2/3/4] 1: Free surface, 2: Rigid wall, 3: Periodic, 4: Sponge 
+    ! 1                    ! Boundary condition only on the left side [not for periodic BC | on the right side for absorbing]
+    ! 20                   ! Sponge layer width in gll points
+    ! .65                  ! Att constant for sponge layer
+    ! 
+    ! -> Model files in C-Style binary floats [doubles]: Vs, Rho files are needed.
+    !                                                  : For simple models, use create1Dmodel_files.f90
+    ! 
+    ! -> Outputs are created in OUTPUT/ if OUTPUT/ is not created by the user, the program will not handle it.
+    !    Output files in OUTPUT directory:
+    !
+    !####################################################################################################################
+    
+    !$ USE OMP_LIB
     implicit none
 
     interface connectivity_matrix
@@ -15,15 +51,15 @@ program SEM1D
     end interface
 
 
-    real (kind=8)                                              :: Jc, Jci, h, f0, dt, sum, CFL, mindist, lambdamin
-    real (kind=8)                                              :: time, t_cpu_0, t_cpu_1, t_cpu, tmp
-    real (kind=8), dimension(:), allocatable                   :: xi, wi, v1D, rho1D, Me, M, xgll, rho1Dgll, v1Dgll
+    real (kind=8)                                              :: Jc, Jci, h, f0, dt, sum, CFL, mindist, lambdamin, taper
+    real (kind=8)                                              :: time, t_cpu_0, t_cpu_1, t_cpu, tmp, tmpBC, attConst
+    real (kind=8), dimension(:), allocatable                   :: xi, wi, v1D, rho1D, Me, M, xgll, rho1Dgll, v1Dgll, g 
     real (kind=8), dimension(:), allocatable                   :: mu1Dgll, u, uold, unew, F, src, temp1, temp2, temp3
     real (kind=8), dimension(:,:), allocatable                 :: lprime, Minv, Kg, Ke,Uout
     integer, dimension(:,:), allocatable                       :: Cij
-    integer                                                    :: N, ne, ngll, i, j, k, nt, isrc, t, el, isnap, reclsnaps
-    integer                                                    :: ir, t0, t1
-    character(len=40)                                          :: filename, filecheck, outname
+    integer                                                    :: N, ne, ngll, i, j, k, nt, t, el, isnap, reclsnaps
+    integer                                                    :: ir, t0, t1, esrc, gsrc, bc, sbc, gWidth
+    character(len=40)                                          :: filename, filecheck, outname, modnameprefix
     !$ integer                                                 :: n_workers
     logical                                                    :: OMPcheck = .false.
 
@@ -45,6 +81,8 @@ program SEM1D
     call system_clock(count=t0, count_rate=ir)
 
     outname = "OUTPUT/snapshots.bin"
+    filename          = "parameters.in"
+
 
     write(*,*) "##########################################"
     write(*,*) "######## Reading parameters file #########"
@@ -72,24 +110,30 @@ program SEM1D
     end if
 
     open (2, file=filename, status = 'old')
+    read(2,*) modnameprefix
     read(2,*) N
     read(2,*) ne
     read(2,*) h
     read(2,*) f0
     read(2,*) dt
     read(2,*) nt
-    read(2,*) isrc
+    read(2,*) esrc
+    read(2,*) gsrc
     read(2,*) isnap
+    read(2,*) bc
+    read(2,*) sbc
+    read(2,*) gWidth
+    read(2,*) attConst
     close(2)
 
-    print*,"Polynomial order         -> ",N
-    print*,"Number of elements       -> ",ne
-    print*,"Element size             -> ",h
-    print*,"Wavelet's peak frequency -> ",f0
-    print*,"Time step                -> ",dt
-    print*,"Number of time steps     -> ",nt
-    print*,"Source location          -> ",isrc
-    print*,"Snapshot interval        -> ",isnap
+    print*,"Polynomial order          -> ",N
+    print*,"Number of elements        -> ",ne
+    print*,"Element size              -> ",h
+    print*,"Wavelet's peak frequency  -> ",f0
+    print*,"Time step                 -> ",dt
+    print*,"Number of time steps      -> ",nt
+    print*,"Source location [nel/ngll]-> ",esrc, gsrc
+    print*,"Snapshot interval         -> ",isnap
 
     ngll = N * ne + 1                  ! Total GLL points
     Jc = h / 2                         ! Jacobian for structured 1D mesh
@@ -117,15 +161,16 @@ program SEM1D
     allocate(Uout(NINT(REAL(nt/isnap)),ngll))             ! Snapshots
     allocate(mu1Dgll(ngll))             ! Shear modulus mapped
     allocate(xgll(ngll))                ! Array for global mapping
+    allocate(g(ngll))
 
     Cij  = connectivity_matrix(N,ne)
 
-    call lagrangeprime(N,lprime)                   ! Lagrange polynomials derivatives
-    call zwgljd(xi,wi,N+1,0.,0.)                   ! Getting GLL points and weights
-    call readmodelfiles1D(v1D, rho1D, ne)          ! Reading model files
-    call shapefunc(N,h,ne,Cij,xgll)                ! Global domain mapping
-    call mapmodel(N,ne,rho1D,v1D,rho1Dgll,v1Dgll)  ! Mapping models
-    call ricker(nt,f0,dt,src)                      ! Source time function
+    call lagrangeprime(N,lprime)                         ! Lagrange polynomials derivatives
+    call zwgljd(xi,wi,N+1,0.,0.)                         ! Getting GLL points and weights
+    call readmodelfiles1D(v1D, rho1D, ne,modnameprefix)  ! Reading model files
+    call shapefunc(N,h,ne,Cij,xgll)                      ! Global domain mapping
+    call mapmodel(N,ne,rho1D,v1D,rho1Dgll,v1Dgll)        ! Mapping models
+    call ricker(nt,f0,dt,src)                            ! Source time function
     
 
     write(*,*)"##########################################"
@@ -224,6 +269,20 @@ program SEM1D
     end do
     !$omp end parallel do
 
+
+    g(:)  = 1
+
+    do k=1,gWidth ! sponge layer
+        taper       = exp(-(attConst*(gWidth-k)/gWidth)**2)
+        g(k)        = taper
+        if (sbc .ne. 1) then
+            g(ngll-k+1) = taper 
+            g(k)        = 1       
+        end if
+    end do
+
+
+
     write(*,*) "!##########################################"
     write(*,*) "############ BEGIN TIME LOOP ##############"
     write(*,*) "###########################################"
@@ -236,7 +295,7 @@ program SEM1D
     do t=1,nt
 
         ! Injecting source
-        F(isrc) = src(t)
+        F(Cij(gsrc,gsrc)) = src(t)
 
         !$omp parallel do private(i,k,tmp) shared(Kg,u,temp1,ngll) schedule(static)
         do i=1,ngll
@@ -262,6 +321,35 @@ program SEM1D
         !$OMP PARALLEL WORKSHARE
         unew(:) = (dt**2.) * temp3(:)  + 2. * u(:) - uold(:)
         !$OMP END PARALLEL WORKSHARE
+
+
+        !##########################################
+        !##### Boundary Conditions            #####
+        !##### 1: Free surface (implicit)     #####
+        !##### 2: Rigid wall                  #####
+        !##### 3: Periodic                    #####
+        !##### 4: Sponge layer                #####
+        !##########################################
+
+
+        if (bc .eq. 2) then ! Rigid BC
+            unew(1)    =   0
+
+            if (sbc .ne. 1) then
+                unew(ngll) = 0
+            end if
+        end if
+
+        if (bc .eq. 3) then ! Periodic
+                tmpBC      = unew(ngll)
+                unew(ngll) = unew(1)
+                unew(1)    = tmpBC
+        end if
+
+        if (bc .eq. 4) then ! Absorbing
+            unew = unew * g
+        end if
+
         uold = u
         u = unew
 
@@ -273,7 +361,7 @@ program SEM1D
             end if
         end if
     end do
-    
+
     write(*,*) "##########################################"
     write(*,*) "######### Write solution binary ##########"
     write(*,*) "######### Solution in OUTPUT/   ##########"
