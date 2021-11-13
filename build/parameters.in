@@ -5,10 +5,12 @@ testing              ! Model name prefix (model names: prefix_vp, prefix_rho)
 5.                   ! Wavelet's peak frequency
 0.001                ! Time step
 5000                 ! Number of time steps
-100                  ! Source location (element number)
+500                  ! Source location (element number)
 1                    ! Source location (gll point)
 50                   ! Snapshot interval
 4                    ! [1/2/3/4] 1: Free surface, 2: Rigid wall, 3: Periodic, 4: Sponge 
 0                    ! Boundary condition only on the left side [not for periodic BC | on the right side for absorbing]
 20                   ! Sponge layer width in gll points
 .65                  ! Att constant for sponge layer
+1                    ! Use intial conditions instead of point source, and produce analytical solution
+200                  ! Width of Gaussian used as intial condition

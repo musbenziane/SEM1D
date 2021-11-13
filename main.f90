@@ -52,13 +52,14 @@ program SEM1D
 
 
     real (kind=8)                                              :: Jc, Jci, h, f0, dt, sum, CFL, mindist, lambdamin, taper
-    real (kind=8)                                              :: time, t_cpu_0, t_cpu_1, t_cpu, tmp, tmpBC, attConst
+    real (kind=8)                                              :: time, t_cpu_0, t_cpu_1, t_cpu, tmp, tmpBC, attConst, sd
+                                                            
     real (kind=8), dimension(:), allocatable                   :: xi, wi, v1D, rho1D, Me, M, xgll, rho1Dgll, v1Dgll, g 
     real (kind=8), dimension(:), allocatable                   :: mu1Dgll, u, uold, unew, F, src, temp1, temp2, temp3
-    real (kind=8), dimension(:,:), allocatable                 :: lprime, Minv, Kg, Ke,Uout
+    real (kind=8), dimension(:,:), allocatable                 :: lprime, Minv, Kg, Ke,Uout, as
     integer, dimension(:,:), allocatable                       :: Cij
     integer                                                    :: N, ne, ngll, i, j, k, nt, t, el, isnap, reclsnaps
-    integer                                                    :: ir, t0, t1, esrc, gsrc, bc, sbc, gWidth
+    integer                                                    :: ir, t0, t1, esrc, gsrc, bc, sbc, gWidth, IC
     character(len=40)                                          :: filename, filecheck, outname, modnameprefix
     !$ integer                                                 :: n_workers
     logical                                                    :: OMPcheck = .false.
@@ -124,6 +125,8 @@ program SEM1D
     read(2,*) sbc
     read(2,*) gWidth
     read(2,*) attConst
+    read(2,*) IC
+    read(2,*) sd
     close(2)
 
     print*,"Polynomial order          -> ",N
@@ -162,6 +165,7 @@ program SEM1D
     allocate(mu1Dgll(ngll))             ! Shear modulus mapped
     allocate(xgll(ngll))                ! Array for global mapping
     allocate(g(ngll))
+    allocate(as(NINT(nt/REAL(isnap)),ngll))
 
     Cij  = connectivity_matrix(N,ne)
 
@@ -281,8 +285,6 @@ program SEM1D
         end if
     end do
 
-
-
     write(*,*) "!##########################################"
     write(*,*) "############ BEGIN TIME LOOP ##############"
     write(*,*) "###########################################"
@@ -291,12 +293,20 @@ program SEM1D
     u(:)    = 0.
     unew(:) = 0.
     F(:)    = 0.
+
+
+    if (IC==1) then
+        u(:)    = exp(-1./sd**2*(xgll(:)-xgll(Cij(gsrc,esrc)))**2)
+        uold(:) = u(:)
+    end if
+
+
     k = 0;
     do t=1,nt
 
-        ! Injecting source
-        F(Cij(gsrc,gsrc)) = src(t)
-
+        if (IC .ne. 1) then
+            F(Cij(gsrc,esrc)) = src(t)
+        end if
         !$omp parallel do private(i,k,tmp) shared(Kg,u,temp1,ngll) schedule(static)
         do i=1,ngll
             tmp = 0.0
@@ -362,6 +372,23 @@ program SEM1D
         end if
     end do
 
+
+    !##########################################
+    !##### Analytical Solution            #####
+    !##########################################
+    if (IC==1) then
+        k = 1
+        
+        do t=1,nt,isnap
+            !$OMP WORKSHARE
+            as(k,:) = 1./2.*(exp(-1./sd**2 * (xgll(:)-xgll(Cij(gsrc,esrc)) + MAXVAL(v1D)*t*dt)**2)+ &
+                             exp(-1./sd**2 * (xgll(:)-xgll(Cij(gsrc,esrc)) - MAXVAL(v1D)*t*dt)**2))
+            !$OMP END WORKSHARE
+            k = k + 1
+        end do
+    end if
+
+
     write(*,*) "##########################################"
     write(*,*) "######### Write solution binary ##########"
     write(*,*) "######### Solution in OUTPUT/   ##########"
@@ -371,6 +398,14 @@ program SEM1D
     open(15,file=outname,access="direct",recl=reclsnaps)
     write(15,rec=1) Uout
     close(15)
+
+
+    reclsnaps = 0
+    inquire(iolength=reclsnaps) as
+
+    open(16,file="OUTPUT/snapshots_analytical.bin",access="direct",recl=reclsnaps)
+    write(16,rec=1) as
+    close(16)
 
     ! Temps elapsed final.
     call system_clock(count=t1, count_rate=ir)
