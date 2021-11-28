@@ -55,8 +55,9 @@ program SEM1D
     real (kind=8)                                              :: time, t_cpu_0, t_cpu_1, t_cpu, tmp, tmpBC, attConst, sd
                                                             
     real (kind=8), dimension(:), allocatable                   :: xi, wi, v1D, rho1D, Me, M, xgll, rho1Dgll, v1Dgll, g 
-    real (kind=8), dimension(:), allocatable                   :: mu1Dgll, u, uold, unew, F, src, temp1, temp2, temp3
-    real (kind=8), dimension(:,:), allocatable                 :: lprime, Minv, Kg, Ke,Uout, as
+    real (kind=8), dimension(:), allocatable                   :: mu1Dgll, u, uold, unew, F, src, temp1, temp2, temp3, &
+                                                                  udot, udotnew, uddot, uddotnew
+    real (kind=8), dimension(:,:), allocatable                 :: lprime, Minv, Kg, Ke,Uout, as, Udotout
     integer, dimension(:,:), allocatable                       :: Cij
     integer                                                    :: N, ne, ngll, i, j, k, nt, t, el, isnap, reclsnaps
     integer                                                    :: ir, t0, t1, esrc, gsrc, bc, sbc, gWidth, IC
@@ -81,7 +82,6 @@ program SEM1D
     call cpu_time(t_cpu_0)
     call system_clock(count=t0, count_rate=ir)
 
-    outname = "OUTPUT/snapshots.bin"
     filename          = "parameters.in"
 
 
@@ -138,9 +138,11 @@ program SEM1D
     print*,"Source location [nel/ngll]-> ",esrc, gsrc
     print*,"Snapshot interval         -> ",isnap
 
+
     ngll = N * ne + 1                  ! Total GLL points
     Jc = h / 2                         ! Jacobian for structured 1D mesh
     Jci = 1 / Jc                       ! Jacobian inverse
+    allocate(u(ngll),udot(ngll),uddot(ngll))                   ! Displacement vector at time t
 
     allocate(Cij(N+1,ne))               ! Connectivity matrix
     allocate(xi(N+1))                   ! GLL points
@@ -155,13 +157,13 @@ program SEM1D
     allocate(Kg(ngll,ngll))             ! Global stifness matrix
     allocate(Ke(N+1,N+1))               ! Elemental stifness matrix
     allocate(lprime(N+1,N+1))           ! Dervatives of Lagrange polynomials
-    allocate(u(ngll))                   ! Displacement vector at time t
     allocate(uold(ngll))                ! displacement vector at time t + dt
-    allocate(unew(ngll))                ! displacement vecotr at time t - dt
+    allocate(unew(ngll),uddotnew(ngll), udotnew(ngll))                ! displacement vecotr at time t - dt
     allocate(src(nt))                   ! Source time function
     allocate(F(ngll))                   ! External force
     allocate(temp1(ngll),temp2(ngll),temp3(ngll))
     allocate(Uout(NINT(REAL(nt/isnap)),ngll))             ! Snapshots
+    allocate(Udotout(NINT(REAL(nt/isnap)),ngll))
     allocate(mu1Dgll(ngll))             ! Shear modulus mapped
     allocate(xgll(ngll))                ! Array for global mapping
     allocate(g(ngll))
@@ -175,7 +177,7 @@ program SEM1D
     call shapefunc(N,h,ne,Cij,xgll)                      ! Global domain mapping
     call mapmodel(N,ne,rho1D,v1D,rho1Dgll,v1Dgll)        ! Mapping models
     call ricker(nt,f0,dt,src)                            ! Source time function
-    
+
 
     write(*,*)"##########################################"
     write(*,*)"############### CFL Check ################"
@@ -200,7 +202,7 @@ program SEM1D
     write(*,*)"##########################################"
     lambdamin = minval(v1D)/(f0*2.5)
 
-    print"(a32,f3.1)", " Elements per minimum wavelength ->", lambdamin/h
+    print"(a32,f6.1)", " Elements per minimum wavelength ->", lambdamin/h
 
     if ((lambdamin/h)<1) then
         print*,"Element size is too large"
@@ -247,7 +249,6 @@ program SEM1D
         Minv(i,i) = 1 / M(i)
     end do
 
-
     !###############################################
     !####### Construct the Stiffness matrix ########
     !###############################################
@@ -285,52 +286,61 @@ program SEM1D
         end if
     end do
 
-    write(*,*) "!##########################################"
+    write(*,*) "###########################################"
     write(*,*) "############ BEGIN TIME LOOP ##############"
     write(*,*) "###########################################"
 
-    uold(:) = 0.
-    u(:)    = 0.
-    unew(:) = 0.
-    F(:)    = 0.
+    uold(:)     = 0.
+    u(:)        = 0.
+    unew(:)     = 0.
+    uddot(:)    = 0.
+    uddotnew(:) = 0.
+    udot(:)     = 0.
+    udotnew(:)  = 0.
+    F(:)        = 0.
 
 
     if (IC==1) then
-        u(:)    = exp(-1./sd**2*(xgll(:)-xgll(Cij(gsrc,esrc)))**2)
-        uold(:) = u(:)
+        udot(:)    = exp(-1./sd**2*(xgll(:)-xgll(Cij(gsrc,esrc)))**2)
+        udotnew    =  udot(:)
     end if
 
 
     k = 0;
-    do t=1,nt
+    do t=1,nt-1
+
 
         if (IC .ne. 1) then
-            F(Cij(gsrc,esrc)) = src(t)
+            F(Cij(gsrc,esrc)) =  src(t) * wi(gsrc) * Jc
         end if
-        !$omp parallel do private(i,k,tmp) shared(Kg,u,temp1,ngll) schedule(static)
-        do i=1,ngll
-            tmp = 0.0
-            do k=1,ngll
-                tmp = tmp + kg(i,k) * u(k)
-            enddo
-            temp1(i) = tmp
-        enddo
-        !$omp end parallel do
+
+        unew(:)     = u(:) + dt * udot(:) + (dt**2)/2 * uddot(:)
+
+        temp1(:) = 0
+        !$OMP PARALLEL DO PRIVATE(k) SHARED(Kg,unew,temp1,ngll) SCHEDULE(static) 
+        do k=1, ngll
+            temp1(k) =  DOT_PRODUCT(Kg( k , : ), unew(:))
+        end do
+        !$OMP END PARALLEL DO
+
 
         !$OMP PARALLEL WORKSHARE
         temp2 = F(:) - temp1(:)
         !$OMP END PARALLEL WORKSHARE
 
-        !$omp parallel do private(i) shared(Minv,temp2,temp3,ngll) schedule(static)
-        do i=1,ngll
-            temp3(i) = Minv(i,i) * temp2(i)
-        enddo
-        !$omp end parallel do
+
+        !$OMP PARALLEL WORKSHARE
+        uddotnew(:)  = (1/M(:)) * temp2(:)
+        !$OMP END PARALLEL WORKSHARE
 
 
         !$OMP PARALLEL WORKSHARE
-        unew(:) = (dt**2.) * temp3(:)  + 2. * u(:) - uold(:)
+        udotnew(:)  = udot(:) + (dt/2) * (uddot(:) + uddotnew(:))
         !$OMP END PARALLEL WORKSHARE
+
+
+
+        
 
 
         !##########################################
@@ -360,12 +370,15 @@ program SEM1D
             unew = unew * g
         end if
 
-        uold = u
-        u = unew
+        !uold  = u
+        u     = unew
+        udot  = udotnew
+        uddot = uddotnew
 
         if (mod(t,isnap) == 0) then
             k = k + 1
-            Uout(k,:) = u
+            Uout(k,:)    = u
+            Udotout(k,:) = udot
             if (mod(t,NINT(nt/10.))==0) then
                 print*,"At time sample ->",t, "/",nt
             end if
@@ -394,18 +407,30 @@ program SEM1D
     write(*,*) "######### Solution in OUTPUT/   ##########"
     write(*,*) "##########################################"
 
+    outname = "OUTPUT/snapshots_U.bin"
+
     inquire(iolength=reclsnaps) Uout
     open(15,file=outname,access="direct",recl=reclsnaps)
     write(15,rec=1) Uout
     close(15)
 
+    outname = "OUTPUT/snapshots_V.bin"
 
-    reclsnaps = 0
-    inquire(iolength=reclsnaps) as
+    open(17,file=outname,access="direct",recl=reclsnaps)
+    write(17,rec=1) Udotout
+    close(17)
 
-    open(16,file="OUTPUT/snapshots_analytical.bin",access="direct",recl=reclsnaps)
-    write(16,rec=1) as
-    close(16)
+
+    if (IC==1) then
+        reclsnaps = 0
+        inquire(iolength=reclsnaps) as
+    
+        open(16,file="OUTPUT/snapshots_analytical_V.bin",access="direct",recl=reclsnaps)
+        write(16,rec=1) as
+        close(16)
+
+    end if
+
 
     ! Temps elapsed final.
     call system_clock(count=t1, count_rate=ir)
@@ -427,4 +452,7 @@ program SEM1D
     deallocate(mu1Dgll,xgll)
     deallocate(u,uold,unew,lprime,Kg,Ke)
     deallocate(Uout)
+    deallocate(src,F,temp1,temp2,temp3)
+    deallocate(Udotout,g,as)
+
 end program

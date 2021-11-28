@@ -1,8 +1,0 @@
-4                    ! Polynomial order
-1000                 ! Number of elements
-3                    ! Element size
-100.                 ! Wavelet's peak frequency
-0.00007215           ! Time step
-1000                 ! Number of time steps
-500                  ! Source location
-50                   ! Snapshot interval
