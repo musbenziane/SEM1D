@@ -52,14 +52,15 @@ program SEM1D
 
 
     real (kind=8)                                              :: Jc, Jci, h, f0, dt, sum, CFL, mindist, lambdamin, taper
-    real (kind=8)                                              :: time, t_cpu_0, t_cpu_1, t_cpu, tmp, tmpBC, attConst, sd
+    real (kind=8)                                              :: time, t_cpu_0, t_cpu_1, t_cpu, tmp, tmpBC, attConst,    &
+                                                                   sd, sigma, tmps
                                                             
     real (kind=8), dimension(:), allocatable                   :: xi, wi, v1D, rho1D, Me, M, xgll, rho1Dgll, v1Dgll, g 
-    real (kind=8), dimension(:), allocatable                   :: mu1Dgll, u, uold, unew, F, src, temp1, temp2, temp3, &
-                                                                  udot, udotnew, uddot, uddotnew
+    real (kind=8), dimension(:), allocatable                   :: mu1Dgll, u, uold, unew, F, fe, src, temp1, temp2, temp3,&
+                                                                  udot, udotnew, uddot, uddotnew, tmpv
     real (kind=8), dimension(:,:), allocatable                 :: lprime, Minv, Kg, Ke,Uout, as, Udotout
     integer, dimension(:,:), allocatable                       :: Cij
-    integer                                                    :: N, ne, ngll, i, j, k, nt, t, el, isnap, reclsnaps
+    integer                                                    :: N, ne, ngll, i, j, k, l,o,  nt, t, el, isnap, reclsnaps
     integer                                                    :: ir, t0, t1, esrc, gsrc, bc, sbc, gWidth, IC
     character(len=40)                                          :: filename, filecheck, outname, modnameprefix
     !$ integer                                                 :: n_workers
@@ -168,9 +169,11 @@ program SEM1D
     allocate(xgll(ngll))                ! Array for global mapping
     allocate(g(ngll))
     allocate(as(NINT(nt/REAL(isnap)),ngll))
+    allocate(tmpv(N+1),fe(N+1))
 
     Cij  = connectivity_matrix(N,ne)
 
+    call lagrangeprime(N,lprime)                         ! Lagrange polynomials derivatives
     call lagrangeprime(N,lprime)                         ! Lagrange polynomials derivatives
     call zwgljd(xi,wi,N+1,0.,0.)                         ! Getting GLL points and weights
     call readmodelfiles1D(v1D, rho1D, ne,modnameprefix)  ! Reading model files
@@ -297,7 +300,6 @@ program SEM1D
     uddotnew(:) = 0.
     udot(:)     = 0.
     udotnew(:)  = 0.
-    F(:)        = 0.
 
 
     if (IC==1) then
@@ -305,42 +307,53 @@ program SEM1D
         udotnew    =  udot(:)
     end if
 
+    k = 0
 
-    k = 0;
-    do t=1,nt-1
+    do t=1,nt
 
+        F(:) = 0.
 
-        if (IC .ne. 1) then
-            F(Cij(gsrc,esrc)) =  src(t) * wi(gsrc) * Jc
-        end if
+        do el=1,ne
+            fe(:) = 0.
+            do i=1,N+1
+                
+                tmp = 0.
 
-        unew(:)     = u(:) + dt * udot(:) + (dt**2)/2 * uddot(:)
+                do j=1,N+1
+                    tmp = tmp + u(Cij(j,el)) * lprime(j,i)
+                end do
 
-        temp1(:) = 0
-        !$OMP PARALLEL DO PRIVATE(k) SHARED(Kg,unew,temp1,ngll) SCHEDULE(static) 
-        do k=1, ngll
-            temp1(k) =  DOT_PRODUCT(Kg( k , : ), unew(:))
+                sigma = tmp * mu1Dgll(Cij(i,el)) * Jci
+             
+                tmps = 0
+
+                do o=1,N+1
+                    tmps   = tmps + sigma * wi(o) * lprime(i,o) 
+                end do
+
+                fe(i) = -tmps
+
+                if ((el .eq. esrc) .and. (i .eq. gsrc)) then
+                    fe(i) = fe(i) + src(t) * wi(i) * Jc
+                end if
+            end do 
+
+            do l=1,N+1 
+                F(Cij(l,el)) = F(Cij(l,el)) + fe(l)
+            end do
         end do
-        !$OMP END PARALLEL DO
+
 
 
         !$OMP PARALLEL WORKSHARE
-        temp2 = F(:) - temp1(:)
+        unew(:)     =  2*u(:) - uold(:) + (dt**2) * (1/M(:)) * F(:)
         !$OMP END PARALLEL WORKSHARE
 
 
-        !$OMP PARALLEL WORKSHARE
-        uddotnew(:)  = (1/M(:)) * temp2(:)
-        !$OMP END PARALLEL WORKSHARE
+        uold(:) = u(:)
+        u(:)    = unew(:)
 
 
-        !$OMP PARALLEL WORKSHARE
-        udotnew(:)  = udot(:) + (dt/2) * (uddot(:) + uddotnew(:))
-        !$OMP END PARALLEL WORKSHARE
-
-
-
-        
 
 
         !##########################################
@@ -371,9 +384,7 @@ program SEM1D
         end if
 
         !uold  = u
-        u     = unew
-        udot  = udotnew
-        uddot = uddotnew
+
 
         if (mod(t,isnap) == 0) then
             k = k + 1
@@ -381,6 +392,7 @@ program SEM1D
             Udotout(k,:) = udot
             if (mod(t,NINT(nt/10.))==0) then
                 print*,"At time sample ->",t, "/",nt
+
             end if
         end if
     end do
@@ -454,5 +466,5 @@ program SEM1D
     deallocate(Uout)
     deallocate(src,F,temp1,temp2,temp3)
     deallocate(Udotout,g,as)
-
+    deallocate(tmpv,fe)
 end program
