@@ -21,11 +21,11 @@ program create1Dmodel_files
         case (0)
         v1D = 2000
         rho1D = 1800
-        open(9,file="V1D.bin",access='direct',recl=nel*8)
+        open(9,file="testing_vs",access='direct',recl=nel*8)
         write(9,rec=1) v1D
         close(9)
 
-        open(8,file="RHO1D.bin",access='direct',recl=nel*8)
+        open(8,file="testing_rho",access='direct',recl=nel*8)
         write(8,rec=1) rho1D
         close(8)
 
@@ -38,11 +38,11 @@ program create1Dmodel_files
         v1D = vs
         rho1D = rho
 
-        open(10,file="V1D.bin",access='direct',recl=nel*8)
+        open(10,file="testing_vs",access='direct',recl=nel*8)
         write(10,rec=1) v1D
         close(10)
 
-        open(11,file="RHO1D.bin",access='direct',recl=nel*8)
+        open(11,file="testing_rho",access='direct',recl=nel*8)
         write(11,rec=1) rho1D
         close(11)
 
@@ -61,11 +61,11 @@ program create1Dmodel_files
         v1D(ns:nend) = vs * rat
         rho1D = rho
 
-        open(12,file="V1D.bin",access='direct',recl=nel*8)
+        open(12,file="testing_vs",access='direct',recl=nel*8)
         write(12,rec=1) v1D
         close(12)
 
-        open(13,file="RHO1D.bin",access='direct',recl=nel*8)
+        open(13,file="testing_rho",access='direct',recl=nel*8)
         write(13,rec=1) rho1D
         close(13)
 

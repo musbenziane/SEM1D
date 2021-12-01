@@ -21,10 +21,5 @@ subroutine ricker(nt,f0,dt,source)
         source(it) = temp(it+1) - temp(it)
     end do
 
-    temp = source
-    do it=1,nt
-        source(it) = temp(it+1) - temp(it)
-        source(it) = -source(it)
-    end do
 
 END subroutine ricker
