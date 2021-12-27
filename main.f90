@@ -55,12 +55,13 @@ program SEM1D
     real (kind=8)                                              :: time, t_cpu_0, t_cpu_1, t_cpu, tmp, tmpBC, attConst, sd
                                                             
     real (kind=8), dimension(:), allocatable                   :: xi, wi, v1D, rho1D, Me, M, xgll, rho1Dgll, v1Dgll, g,tauL 
-    real (kind=8), dimension(:), allocatable                   :: mu1Dgll, u, uold, unew, F, src, temp1, temp2, temp3 ,&
-                                                                  udot, udotnew, uddot, uddotnew, sigma, recsigma
+    real (kind=8), dimension(:), allocatable                   :: mu1Dgll, u, uold, unew, F, src, temp1, temp2, temp3, Fg,&
+                                                                  udot, udotnew, uddot, uddotnew, sigma, recsigma, &
+                                                                  greenU, greenV
     real (kind=8), dimension(:,:), allocatable                 :: lprime, Minv, Kg, Ke,Uout, as, Udotout, sigmaout
     integer, dimension(:,:), allocatable                       :: Cij
     integer                                                    :: N, ne, ngll, i, j, k, l, nt, t, el, isnap, reclsnaps
-    integer                                                    :: ir, t0, t1, esrc, gsrc, bc, sbc, gWidth, IC
+    integer                                                    :: ir, t0, t1, esrc, gsrc, bc, sbc, gWidth, IC, ercv, grcv
     character(len=40)                                          :: filename, filecheck, outname, modnameprefix
     !$ integer                                                 :: n_workers
     logical                                                    :: OMPcheck = .false.
@@ -121,6 +122,8 @@ program SEM1D
     read(2,*) nt
     read(2,*) esrc
     read(2,*) gsrc
+    read(2,*) ercv
+    read(2,*) grcv
     read(2,*) isnap
     read(2,*) bc
     read(2,*) sbc
@@ -162,6 +165,7 @@ program SEM1D
     allocate(uold(ngll))                ! displacement vector at time t + dt
     allocate(src(nt))                   ! Source time function
     allocate(F(ngll))                   ! External force
+    allocate(Fg(ngll))                  ! All forces
     allocate(temp1(ngll),temp2(ngll),temp3(ngll))
     allocate(Uout(NINT(REAL(nt/isnap)),ngll))             ! Snapshots
     allocate(Udotout(NINT(REAL(nt/isnap)),ngll),sigmaout(NINT(REAL(nt/isnap)),ngll))
@@ -170,6 +174,7 @@ program SEM1D
     allocate(g(ngll))
     allocate(as(NINT(nt/REAL(isnap)),ngll))
     allocate(tauL(ngll), recsigma(nt))
+    allocate(greenU(nt),greenV(nt))
 
     Cij  = connectivity_matrix(N,ne)
 
@@ -248,7 +253,13 @@ program SEM1D
             M(Cij(j,i)) =  M(Cij(j,i)) + Me(j)        ! Filling the global mass matrix
         end do
     end do
-
+    
+    if (bc .eq. 3) then ! Mass matrix edit for periodic BC 
+        tmp     =0.
+        tmp    =M(1)
+        M(1)   =M(1)+M(ngll)
+        M(ngll)=M(ngll)+tmp
+    end if
     Minv(:,:) = 0
     ! Invert mass matrix
     do i=1,ngll
@@ -260,8 +271,8 @@ program SEM1D
     !####### Construct the Stiffness matrix ########
     !###############################################
     mu1Dgll(:) =  rho1Dgll(:) * v1Dgll(:)**2.          ! Shear modulus
+
     Kg(:,:) = 0
-    !$omp parallel do private(el,i,j,k,sum) shared(Kg,Ke,Cij,lprime,wi,Jc,Jci,N) schedule(static)
     do el=1,ne
         do i=1,N+1                                    ! Elemental stifness matrix
             do j=1,N+1
@@ -279,20 +290,8 @@ program SEM1D
             end do
         end do
     end do
-    !$omp end parallel do
 
-
-    g(:)  = 1
-
-    do k=1,gWidth ! sponge layer
-        taper       = exp(-(attConst*(gWidth-k)/gWidth)**2)
-        g(k)        = taper
-        if (sbc .ne. 1) then
-            g(ngll-k+1) = taper 
-            g(k)        = 1       
-        end if
-    end do
-
+    
     write(*,*) "###########################################"
     write(*,*) "############ BEGIN TIME LOOP ##############"
     write(*,*) "###########################################"
@@ -309,32 +308,40 @@ program SEM1D
 
 
     if (IC==1) then
-        u(:)    = exp(-1./sd**2*(xgll(:)-xgll(Cij(gsrc,esrc)))**2)
+        udot(:)    = exp(-1./sd**2*(xgll(:)-xgll(Cij(gsrc,esrc)))**2)
         uold(:) = u(:)
     end if
-
-
+    
     k = 0;
     do t=1,nt
 
-        tauL(Cij(N+1,200)) = recsigma(t)
+        !tauL(Cij(N+1,200)) = recsigma(t)
 
-        !if (IC .ne. 1) then
-        !    F(Cij(gsrc,esrc)) =  src(t) * wi(gsrc) * Jc
-        !end if
+        if (IC .ne. 1) then
+            F(Cij(gsrc,esrc)) =  src(t) * wi(gsrc) * Jc
+        end if
 
         unew(:)     = u(:) + dt * udot(:) + (dt**2)/2 * uddot(:)
 
         temp1(:) = 0
-        !$OMP PARALLEL DO PRIVATE(k) SHARED(Kg,unew,temp1,ngll) SCHEDULE(static) 
+        !$OMP PARALLEL DO PRIVATE(l) SHARED(Kg,unew,temp1,ngll) SCHEDULE(static) 
         do l=1, ngll
             temp1(l) =  DOT_PRODUCT(Kg( l , : ), unew(:))
         end do
         !$OMP END PARALLEL DO
 
         !$OMP PARALLEL WORKSHARE
-        temp2 = F(:) - temp1(:) + tauL(:)
+        temp2 = F(:) - temp1(:) - tauL(:)
         !$OMP END PARALLEL WORKSHARE
+
+        if (bc .eq. 3) then ! Periodic
+            Fg       = temp2
+            tmp      = 0.
+            tmp      = Fg(1)
+            Fg(1)    = Fg(1)+Fg(ngll)
+            Fg(ngll) =Fg(ngll)+tmp
+            temp2    = Fg
+        end if
 
         !$OMP PARALLEL WORKSHARE
         uddotnew(:)  = (1/M(:)) * temp2(:)
@@ -343,6 +350,7 @@ program SEM1D
         !$OMP PARALLEL WORKSHARE
         udotnew(:)  = udot(:) + (dt/2) * (uddot(:) + uddotnew(:))
         !$OMP END PARALLEL WORKSHARE
+
 
         do el=1,ne
             do i=1,N+1
@@ -353,13 +361,13 @@ program SEM1D
                 sigma(Cij(i,el)) = tmp
             end do 
         end do
-        recsigma(t)  = sigma(Cij(N+1,200))
+        !recsigma(t)  = sigma(Cij(N+1,200))
         !##########################################
         !##### Boundary Conditions            #####
         !##### 1: Free surface (implicit)     #####
         !##### 2: Rigid wall                  #####
         !##### 3: Periodic                    #####
-        !##### 4: Sponge layer                #####
+        !##### 4: ABC                         #####
         !##########################################
 
 
@@ -371,20 +379,20 @@ program SEM1D
             end if
         end if
 
-        if (bc .eq. 3) then ! Periodic
-                tmpBC      = unew(ngll)
-                unew(ngll) = unew(1)
-                unew(1)    = tmpBC
-        end if
-
         if (bc .eq. 4) then ! Absorbing
-            unew = unew * g
+            tauL(ngll) = rho1Dgll(ngll)*v1Dgll(ngll)*udot(ngll)
+            if (sbc .ne. 1) then
+                tauL(1)    = rho1Dgll(1)*v1Dgll(1)*udot(1)
+            end if
         end if
-
-
+        
         u     = unew
         udot  = udotnew
         uddot = uddotnew
+
+        greenU(t) = u(Cij(grcv,ercv))
+        greenV(t) = udot(Cij(grcv,ercv))
+
 
         if (mod(t,isnap) == 0) then
             k = k + 1
@@ -394,7 +402,6 @@ program SEM1D
 
             if (mod(t,NINT(nt/10.))==0) then
                 print*,"At time sample ->",t, "/",nt
-
             end if
         end if
     end do
@@ -443,6 +450,22 @@ program SEM1D
     close(18)
 
 
+    outname = "OUTPUT/SEM_Green_U.bin"
+
+    open(19,file=outname,access="direct",recl=nt*8)
+    write(19,rec=1) greenU
+    close(19)
+
+    outname = "OUTPUT/SEM_Green_V.bin"
+
+    open(20,file=outname,access="direct",recl=nt*8)
+    write(20,rec=1) greenV
+    close(20)
+
+    open(21,file="OUTPUT/source.bin",access="direct",recl=nt*8)
+    write(21,rec=1) src
+    close(21)
+
     !open(28,file="DBC.bin",access="direct",recl=nt*8)
     !write(28,rec=1) recsigma
     !close(28)
@@ -481,5 +504,7 @@ program SEM1D
     deallocate(Uout,Udotout,udot,udotnew,uddot,uddotnew)
     deallocate(sigma,sigmaout)
     deallocate(tauL, recsigma)
+    DEALLOCATE(greenU,greenV)
+    DEALLOCATE(F,Fg)
 
 end program

@@ -16,10 +16,11 @@ subroutine ricker(nt,f0,dt,source)
         temp(it) = -2.*a_ricker*t*exp(-(a_ricker*t)**2)
     enddo
 
-    source = temp
     do it=1,nt
         source(it) = temp(it+1) - temp(it)
     end do
+
+    source = -source
 
 
 END subroutine ricker
